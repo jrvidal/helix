@@ -5742,9 +5742,11 @@ fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBeha
     );
 }
 
-fn suspend(_cx: &mut Context) {
+fn suspend(cx: &mut Context) {
     #[cfg(not(windows))]
-    signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP).unwrap();
+    if cx.editor.suspendable {
+        signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP).unwrap();
+    }
 }
 
 fn add_newline_above(cx: &mut Context) {

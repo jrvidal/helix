@@ -1001,6 +1001,8 @@ pub struct Editor {
     pub handlers: Handlers,
 
     pub mouse_down_range: Option<Range>,
+
+    pub suspendable: bool,
 }
 
 pub type Motion = Box<dyn Fn(&mut Editor)>;
@@ -1118,6 +1120,7 @@ impl Editor {
             cursor_cache: Cell::new(None),
             handlers,
             mouse_down_range: None,
+            suspendable: is_suspendable(),
         }
     }
 
@@ -2107,4 +2110,40 @@ fn try_restore_indent(doc: &mut Document, view: &mut View) {
             });
         doc.apply(&transaction, view.id);
     }
+}
+
+#[cfg(windows)]
+fn is_suspendable() -> bool {
+    true
+}
+
+#[cfg(not(windows))]
+fn is_suspendable() -> bool {
+    let action: libc::sigaction = {
+        let mut action: std::mem::MaybeUninit<libc::sigaction> = std::mem::MaybeUninit::uninit();
+
+        // SAFETY
+        //
+        // - We call `sigaction()` with no action to be set (first NULL argument), just an out
+        //   parameter to obtain the current signal disposition for SIGTSTP.
+        // - We only assume `action` is initialized if `sigaction()` was successful.
+        unsafe {
+            let ret = libc::sigaction(libc::SIGTSTP, std::ptr::null(), action.as_mut_ptr());
+
+            if ret == -1 {
+                log::error!("Unable to determine suspendability");
+                return false;
+            }
+
+            action.assume_init()
+        }
+    };
+
+    // This is not 100% correct. The `sigaction` struct typically contains a
+    // union field that contains both `sa_sigaction` and `sa_handler`, plus
+    // some macro magic to make it transparent for C code.
+    //
+    // This is not relevant unless we compile for fairly obscure targets
+    // (currently: vxworks, newlib, aix, uclibc)
+    action.sa_sigaction != libc::SIG_IGN
 }

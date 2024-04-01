@@ -224,13 +224,20 @@ impl Application {
         #[cfg(windows)]
         let signals = futures_util::stream::empty();
         #[cfg(not(windows))]
-        let signals = Signals::new([
-            signal::SIGTSTP,
-            signal::SIGCONT,
-            signal::SIGUSR1,
-            signal::SIGTERM,
-            signal::SIGINT,
-        ])
+        let signals = {
+            let mut signals = vec![
+                signal::SIGCONT,
+                signal::SIGUSR1,
+                signal::SIGTERM,
+                signal::SIGINT,
+            ];
+
+            if editor.suspendable {
+                signals.push(signal::SIGTSTP);
+            }
+
+            Signals::new(signals)
+        }
         .context("build signal handler")?;
 
         let app = Self {
