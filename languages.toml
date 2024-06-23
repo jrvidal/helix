@@ -2820,6 +2820,6 @@ scope = "source.gmi"
 file-types = ["gmi"]
 roots = []
 
-[[grammar]]
-name = "gemini"
-source = { git = "https://git.sr.ht/~sfr/tree-sitter-gemini", rev = "3cc5e4bdf572d5df4277fc2e54d6299bd59a54b3" }
+# [[grammar]]
+# name = "gemini"
+# source = { git = "https://git.sr.ht/~sfr/tree-sitter-gemini", rev = "3cc5e4bdf572d5df4277fc2e54d6299bd59a54b3" }

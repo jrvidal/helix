@@ -243,7 +243,7 @@ impl super::PluginSystem for SteelScriptingEngine {
         args: &[Cow<str>],
     ) -> bool {
         if ENGINE.with(|x| x.borrow().global_exists(name)) {
-            let args = steel::List::from(
+            let args = steel::values::lists::List::from(
                 args.iter()
                     .map(|x| x.clone().into_steelval().unwrap())
                     .collect::<Vec<_>>(),
@@ -291,7 +291,7 @@ impl super::PluginSystem for SteelScriptingEngine {
                 // For what its worth, also explore a more elegant API for calling apply with some arguments,
                 // this does work, but its a little opaque.
                 if let Err(e) = ENGINE.with(|x| {
-                    let args = steel::List::from(
+                    let args = steel::values::lists::List::from(
                         args[1..]
                             .iter()
                             .map(|x| x.clone().into_steelval().unwrap())
@@ -589,10 +589,8 @@ fn run_initialization_script(cx: &mut Context) {
     ENGINE.with(|engine| {
         let mut guard = engine.borrow_mut();
 
-        let res = guard.run(&format!(
-            r#"(require "{}")"#,
-            helix_module_path.to_str().unwrap()
-        ));
+        let var_name = format!(r#"(require "{}")"#, helix_module_path.to_str().unwrap());
+        let res = guard.run(var_name);
 
         // Present the error in the helix.scm loading
         if let Err(e) = res {
@@ -620,7 +618,7 @@ fn run_initialization_script(cx: &mut Context) {
                 let docs = exported
                     .iter()
                     .filter_map(|x| {
-                        if let Ok(value) = guard.run(&format!(
+                        if let Ok(value) = guard.run(format!(
                             "(#%function-ptr-table-get #%function-ptr-table {})",
                             x
                         )) {
@@ -1045,38 +1043,42 @@ fn configure_engine() -> std::rc::Rc<std::cell::RefCell<steel::steel_vm::engine:
         },
     );
 
-    engine.register_fn(
-        "Picker::new",
-        |values: steel::List<String>| -> WrappedDynComponent {
-            let picker = ui::Picker::new(
-                Vec::new(),
-                PathBuf::from(""),
-                move |cx, path: &PathBuf, action| {
-                    if let Err(e) = cx.editor.open(path, action) {
-                        let err = if let Some(err) = e.source() {
-                            format!("{}", err)
-                        } else {
-                            format!("unable to open \"{}\"", path.display())
-                        };
-                        cx.editor.set_error(err);
-                    }
-                },
-            )
-            .with_preview(|_editor, path| Some((path.clone().into(), None)));
+    engine.register_fn("Picker::new", |values: SteelVal| -> WrappedDynComponent {
+        let Some(list) = values.list() else {
+            panic!();
+        };
 
-            let injector = picker.injector();
-
-            for file in values {
-                if injector.push(PathBuf::from(file)).is_err() {
-                    break;
+        let picker = ui::Picker::new(
+            Vec::new(),
+            PathBuf::from(""),
+            move |cx, path: &PathBuf, action| {
+                if let Err(e) = cx.editor.open(path, action) {
+                    let err = if let Some(err) = e.source() {
+                        format!("{}", err)
+                    } else {
+                        format!("unable to open \"{}\"", path.display())
+                    };
+                    cx.editor.set_error(err);
                 }
-            }
+            },
+        )
+        .with_preview(|_editor, path| Some((path.clone().into(), None)));
 
-            WrappedDynComponent {
-                inner: Some(Box::new(ui::overlay::overlaid(picker))),
+        let injector = picker.injector();
+
+        for file in list {
+            let Ok(file )= file.string_or_else(|| ()) else {
+            panic!();
+            };
+            if injector.push(PathBuf::from(file)).is_err() {
+                break;
             }
-        },
-    );
+        }
+
+        WrappedDynComponent {
+            inner: Some(Box::new(ui::overlay::overlaid(picker))),
+        }
+    });
 
     // engine.register_fn("Picker::new", |values: Vec<String>| todo!());
 
@@ -1401,7 +1403,7 @@ fn get_selection(cx: &mut Context) -> String {
 fn run_in_engine(cx: &mut Context, arg: String) -> anyhow::Result<()> {
     let callback = async move {
         let output = ENGINE
-            .with(|x| x.borrow_mut().run(&arg))
+            .with(|x| x.borrow_mut().run(arg.clone()))
             .map(|x| format!("{:?}", x));
 
         let (output, success) = match output {
